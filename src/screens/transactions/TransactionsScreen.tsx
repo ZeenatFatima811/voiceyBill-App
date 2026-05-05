@@ -1,0 +1,890 @@
+import React, { useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  FlatList,
+  TouchableOpacity,
+  StyleSheet,
+  TextInput,
+  RefreshControl,
+  Alert,
+  Modal,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { RouteProp } from '@react-navigation/native';
+import {
+  useGetAllTransactionsQuery,
+  useDeleteTransactionMutation,
+  useDuplicateTransactionMutation,
+  useBulkDeleteTransactionMutation,
+  useBulkImportTransactionMutation,
+} from '../../features/transaction/transactionAPI';
+import { useTheme } from '../../context/ThemeContext';
+import { colors, spacing, fontSize, fontWeight, borderRadius } from '../../theme/colors';
+import { Transaction } from '../../types/transaction';
+import TransactionFormSheet from '../../components/transaction/TransactionFormSheet';
+import { TRANSACTION_TYPE } from '../../constants/transaction';
+import { MainTabParamList } from '../../navigation/MainNavigator';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
+import { format } from 'date-fns';
+import { formatCurrency } from '../../lib/formatCurrency';
+import {
+  Search,
+  Filter,
+  Plus,
+  Upload,
+  ArrowUpRight,
+  ArrowDownRight,
+  Calendar,
+  Tag,
+  MoreVertical,
+  Trash2,
+  Edit3,
+  Copy,
+  X,
+  RefreshCw,
+  CircleDot,
+} from 'lucide-react-native';
+
+type FilterType = 'ALL' | 'INCOME' | 'EXPENSE';
+type RecurringFilter = 'ALL' | 'RECURRING' | 'NON_RECURRING';
+type RecurringStatus = 'RECURRING' | 'NON_RECURRING' | undefined;
+
+type TransactionsScreenRouteProp = RouteProp<MainTabParamList, 'Transactions'>;
+
+interface TransactionsScreenProps {
+  route?: TransactionsScreenRouteProp;
+}
+
+export default function TransactionsScreen({ route }: TransactionsScreenProps) {
+  const { activeTheme } = useTheme();
+  const themeColors = colors[activeTheme];
+
+  const [search, setSearch] = useState('');
+  const [debounced, setDebounced] = useState(search);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [typeFilter, setTypeFilter] = useState<FilterType>('ALL');
+  const [recurringFilter, setRecurringFilter] = useState<RecurringFilter>('ALL');
+  const [showFormSheet, setShowFormSheet] = useState(false);
+  const [initialMode, setInitialMode] = useState<'VOICE' | 'SCAN' | 'MANUAL'>('MANUAL');
+  const [editingTransactionId, setEditingTransactionId] = useState<string | undefined>();
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showRowsModal, setShowRowsModal] = useState(false);
+  const [showTypeModal, setShowTypeModal] = useState(false);
+  const [showFreqModal, setShowFreqModal] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+
+  const processedVoiceMode = React.useRef(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(search.trim()), 400);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // Handle voice mode from navigation
+  useEffect(() => {
+    if (route?.params?.openVoiceMode && !processedVoiceMode.current) {
+      processedVoiceMode.current = true;
+      setInitialMode('VOICE');
+      setShowFormSheet(true);
+      
+      // Reset the ref when form closes
+      const timeout = setTimeout(() => {
+        processedVoiceMode.current = false;
+      }, 500);
+      
+      return () => clearTimeout(timeout);
+    }
+  }, [route?.params?.openVoiceMode]);
+
+  const { data, isLoading, refetch } = useGetAllTransactionsQuery({
+    keyword: debounced || undefined,
+    pageNumber: page,
+    pageSize: pageSize,
+    type: typeFilter !== 'ALL' ? typeFilter : undefined,
+    recurringStatus: recurringFilter !== 'ALL' ? (recurringFilter as RecurringStatus) : undefined,
+  });
+
+  const [deleteTransaction] = useDeleteTransactionMutation();
+  const [duplicateTransaction] = useDuplicateTransactionMutation();
+  const [bulkDelete, { isLoading: isBulkDeleting }] = useBulkDeleteTransactionMutation();
+  const [bulkImport, { isLoading: isBulkImporting }] = useBulkImportTransactionMutation();
+
+  useEffect(() => {
+    // clear selections when page or page size changes
+    setSelectedIds(new Set());
+  }, [page, pageSize, data?.transations?.length]);
+
+  const handleDelete = async (id: string) => {
+    Alert.alert(
+      'Delete Transaction',
+      'Are you sure you want to delete this transaction?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteTransaction(id).unwrap();
+              refetch();
+            } catch (error) {
+              console.error('Failed to delete transaction:', error);
+              Alert.alert('Error', 'Failed to delete transaction');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleEdit = (id: string) => {
+    setEditingTransactionId(id);
+    setShowFormSheet(true);
+  };
+
+  const handleDuplicate = async (id: string) => {
+    try {
+      await duplicateTransaction(id).unwrap();
+      refetch();
+      Alert.alert('Success', 'Transaction duplicated successfully');
+    } catch (error) {
+      console.error('Failed to duplicate transaction:', error);
+      Alert.alert('Error', 'Failed to duplicate transaction');
+    }
+  };
+
+  const handleAddNew = () => {
+    setEditingTransactionId(undefined);
+    setShowFormSheet(true);
+  };
+
+  const handleCloseForm = () => {
+    setShowFormSheet(false);
+    setEditingTransactionId(undefined);
+    setInitialMode('MANUAL');
+    refetch();
+  };
+
+  const showActionMenu = (item: Transaction) => {
+    Alert.alert('Transaction Actions', item.title, [
+      {
+        text: 'Edit',
+        onPress: () => handleEdit(item._id),
+      },
+      {
+        text: 'Duplicate',
+        onPress: () => handleDuplicate(item._id),
+      },
+      {
+        text: 'Delete',
+        onPress: () => handleDelete(item._id),
+        style: 'destructive',
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const clearFilters = () => {
+    setSearch('');
+    setDebounced('');
+    setTypeFilter('ALL');
+    setRecurringFilter('ALL');
+    setPage(1);
+    setSelectedIds(new Set());
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0 || isBulkDeleting) return;
+    Alert.alert(
+      'Delete Selected',
+      `Delete ${selectedIds.size} selected transaction(s)?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete', style: 'destructive', onPress: async () => {
+            try {
+              await bulkDelete(Array.from(selectedIds)).unwrap();
+              setSelectedIds(new Set());
+              refetch();
+            } catch (e) {}
+          }
+        }
+      ]
+    );
+  };
+
+  const handleBulkImport = async () => {
+    if (isBulkImporting) return;
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: ['application/json'] });
+      if (result.canceled || !result.assets?.length) return;
+  const fileUri = result.assets[0].uri;
+  const content = await FileSystem.readAsStringAsync(fileUri);
+      const parsed = JSON.parse(content);
+      if (!Array.isArray(parsed)) {
+        Alert.alert('Invalid file', 'Expected a JSON array of transactions');
+        return;
+      }
+      await bulkImport({ transactions: parsed }).unwrap();
+      Alert.alert('Imported', 'Transactions imported successfully');
+      refetch();
+    } catch (e) {
+      Alert.alert('Import failed', 'Could not import transactions');
+    }
+  };
+
+  const styles = createStyles(themeColors);
+
+  const totalPages = data?.pagination?.totalPages || 0;
+  const totalCount = data?.pagination?.totalCount || 0;
+  const items = data?.transations || [];
+  const showingFrom = items.length ? (page - 1) * pageSize + 1 : 0;
+  const showingTo = items.length ? Math.min(page * pageSize, totalCount) : 0;
+
+  const hasActiveFilters = search || typeFilter !== 'ALL' || recurringFilter !== 'ALL';
+  const activeFiltersCount = [
+    typeFilter !== 'ALL',
+    recurringFilter !== 'ALL',
+  ].filter(Boolean).length;
+
+  // Render transaction card
+  const renderTransactionCard = ({ item }: { item: Transaction }) => {
+    const isIncome = item.type === TRANSACTION_TYPE.INCOME;
+    const selected = selectedIds.has(item._id);
+    const isRecurring = item.isRecurring;
+
+    return (
+      <TouchableOpacity
+        activeOpacity={0.7}
+        onPress={() => toggleSelect(item._id)}
+        onLongPress={() => showActionMenu(item)}
+        style={[
+          styles.transactionCard,
+          {
+            backgroundColor: themeColors.card,
+            borderColor: selected ? themeColors.primary : themeColors.border,
+            borderWidth: selected ? 2 : 1,
+          },
+        ]}
+      >
+        {/* Selection indicator */}
+        {selected && (
+          <View style={[styles.selectedBadge, { backgroundColor: themeColors.primary }]}>
+            <Text style={[styles.selectedBadgeText, { color: themeColors.primaryForeground }]}>✓</Text>
+          </View>
+        )}
+
+        {/* Main content */}
+        <View style={styles.cardContent}>
+          {/* Left: Icon + Info */}
+          <View style={styles.cardLeft}>
+            <View
+              style={[
+                styles.iconCircle,
+                {
+                  backgroundColor: isIncome
+                    ? 'rgba(74, 222, 128, 0.1)'
+                    : 'rgba(248, 113, 113, 0.1)',
+                },
+              ]}
+            >
+              {isIncome ? (
+                <ArrowUpRight size={20} color="#4ade80" />
+              ) : (
+                <ArrowDownRight size={20} color="#f87171" />
+              )}
+            </View>
+
+            <View style={styles.infoColumn}>
+              <Text style={[styles.cardTitle, { color: themeColors.foreground }]} numberOfLines={1}>
+                {item.title}
+              </Text>
+              <View style={styles.metaRow}>
+                <Tag size={12} color={themeColors.mutedForeground} />
+                <Text style={[styles.metaText, { color: themeColors.mutedForeground }]}>
+                  {item.category}
+                </Text>
+              </View>
+              <View style={styles.metaRow}>
+                <Calendar size={12} color={themeColors.mutedForeground} />
+                <Text style={[styles.metaText, { color: themeColors.mutedForeground }]}>
+                  {format(new Date(item.date), 'MMM dd, yyyy')}
+                </Text>
+              </View>
+              {isRecurring && (
+                <View style={styles.metaRow}>
+                  <RefreshCw size={12} color={themeColors.mutedForeground} />
+                  <Text style={[styles.metaText, { color: themeColors.mutedForeground }]}>
+                    {item.recurringFrequency || 'Recurring'}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </View>
+
+          {/* Right: Amount + Actions */}
+          <View style={styles.cardRight}>
+            <Text
+              style={[
+                styles.cardAmount,
+                {
+                  color: isIncome ? '#4ade80' : themeColors.destructive,
+                },
+              ]}
+            >
+              {formatCurrency(item.amount, { showSign: true, isExpense: !isIncome })}
+            </Text>
+            <TouchableOpacity
+              onPress={() => showActionMenu(item)}
+              style={styles.moreButton}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <MoreVertical size={18} color={themeColors.mutedForeground} />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  return (
+    <SafeAreaView style={styles.container} edges={['top']}>
+      {/* Dark Header Section - Always dark like dashboard */}
+      <View style={styles.darkHeaderSection}>
+        <View style={styles.navbar}>
+          <Text style={styles.navbarTitle}>All Transactions</Text>
+          <Text style={styles.navbarSubtitle}>
+            Showing {totalCount} transaction{totalCount !== 1 ? 's' : ''}
+          </Text>
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              onPress={handleBulkImport}
+              style={styles.importButton}
+              disabled={isBulkImporting}
+            >
+              <Upload size={18} color="#ffffff" />
+              <Text style={styles.importButtonText}>Import</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleAddNew}
+              style={[styles.addButton, { backgroundColor: themeColors.primary }]}
+            >
+              <Plus size={18} color="#ffffff" />
+              <Text style={styles.addButtonText}>Add Transaction</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+
+      {/* Search Bar */}
+      <View style={styles.searchContainer}>
+        <View style={[styles.searchBox, { backgroundColor: themeColors.card, borderColor: themeColors.border }]}>
+          <Search size={18} color={themeColors.mutedForeground} />
+          <TextInput
+            placeholder="Search transactions..."
+            placeholderTextColor={themeColors.mutedForeground}
+            value={search}
+            onChangeText={setSearch}
+            style={[styles.searchInput, { color: themeColors.foreground }]}
+          />
+          {search ? (
+            <TouchableOpacity onPress={() => setSearch('')}>
+              <X size={18} color={themeColors.mutedForeground} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      </View>
+
+      {/* Filter Bar */}
+      <View style={styles.filterBar}>
+        <TouchableOpacity
+          onPress={() => setShowFilters(!showFilters)}
+          style={[
+            styles.filterButton,
+            {
+              backgroundColor: hasActiveFilters ? themeColors.primary : themeColors.card,
+              borderColor: hasActiveFilters ? themeColors.primary : themeColors.border,
+            },
+          ]}
+        >
+          <Filter
+            size={16}
+            color={hasActiveFilters ? themeColors.primaryForeground : themeColors.foreground}
+          />
+          <Text
+            style={[
+              styles.filterButtonText,
+              { color: hasActiveFilters ? themeColors.primaryForeground : themeColors.foreground },
+            ]}
+          >
+            Filters {activeFiltersCount > 0 && `(${activeFiltersCount})`}
+          </Text>
+        </TouchableOpacity>
+
+        {hasActiveFilters && (
+          <TouchableOpacity onPress={clearFilters} style={styles.resetButton}>
+            <X size={14} color={themeColors.mutedForeground} />
+            <Text style={[styles.resetButtonText, { color: themeColors.mutedForeground }]}>Reset</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Expanded Filters */}
+      {showFilters && (
+        <View style={[styles.filtersPanel, { backgroundColor: themeColors.card, borderColor: themeColors.border }]}>
+          <TouchableOpacity
+            onPress={() => setShowTypeModal(true)}
+            style={[styles.filterOption, { borderBottomColor: themeColors.border }]}
+          >
+            <Text style={[styles.filterLabel, { color: themeColors.mutedForeground }]}>Type</Text>
+            <Text style={[styles.filterValue, { color: themeColors.foreground }]}>
+              {typeFilter === 'ALL' ? 'All Types' : typeFilter}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setShowFreqModal(true)}
+            style={styles.filterOption}
+          >
+            <Text style={[styles.filterLabel, { color: themeColors.mutedForeground }]}>Frequency</Text>
+            <Text style={[styles.filterValue, { color: themeColors.foreground }]}>
+              {recurringFilter === 'ALL' ? 'All' : recurringFilter.replace('_', ' ')}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Bulk Actions */}
+      {selectedIds.size > 0 && (
+        <View style={[styles.bulkActionsBar, { backgroundColor: themeColors.primary }]}>
+          <Text style={[styles.bulkActionsText, { color: themeColors.primaryForeground }]}>
+            {selectedIds.size} selected
+          </Text>
+          <TouchableOpacity
+            onPress={handleBulkDelete}
+            style={[styles.bulkDeleteButton, { backgroundColor: themeColors.destructive }]}
+            disabled={isBulkDeleting}
+          >
+            <Trash2 size={16} color={themeColors.primaryForeground} />
+            <Text style={[styles.bulkDeleteText, { color: themeColors.primaryForeground }]}>
+              Delete
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Transaction List */}
+      <FlatList
+        data={items}
+        keyExtractor={(item) => item._id}
+        renderItem={renderTransactionCard}
+        contentContainerStyle={styles.listContent}
+        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} />}
+        ListEmptyComponent={
+          <View style={styles.emptyState}>
+            <CircleDot size={48} color={themeColors.mutedForeground} opacity={0.5} />
+            <Text style={[styles.emptyText, { color: themeColors.mutedForeground }]}>
+              No transactions found
+            </Text>
+          </View>
+        }
+      />
+
+      {/* Pagination Footer */}
+      <View style={[styles.footerBar, { backgroundColor: themeColors.card, borderTopColor: themeColors.border }]}>
+        <View style={styles.footerLeft}>
+          <Text style={[styles.footerText, { color: themeColors.mutedForeground }]}>Rows per page</Text>
+          <TouchableOpacity
+            onPress={() => setShowRowsModal(true)}
+            style={[styles.footerButton, { borderColor: themeColors.border }]}
+          >
+            <Text style={[styles.footerButtonText, { color: themeColors.foreground }]}>{pageSize}</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={styles.paginationContainer}>
+          <TouchableOpacity
+            style={[styles.paginationButton, page === 1 && styles.paginationButtonDisabled]}
+            onPress={() => setPage(Math.max(1, page - 1))}
+            disabled={page === 1}
+          >
+            <Text style={{ color: page === 1 ? themeColors.mutedForeground : themeColors.foreground }}>
+              ◀
+            </Text>
+          </TouchableOpacity>
+          <Text style={[styles.paginationText, { color: themeColors.foreground }]}>
+            {page} / {Math.max(totalPages, 1)}
+          </Text>
+          <TouchableOpacity
+            style={[styles.paginationButton, page === totalPages && styles.paginationButtonDisabled]}
+            onPress={() => setPage(Math.min(Math.max(totalPages, 1), page + 1))}
+            disabled={page === totalPages}
+          >
+            <Text
+              style={{
+                color: page === totalPages ? themeColors.mutedForeground : themeColors.foreground,
+              }}
+            >
+              ▶
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Rows per page modal */}
+      <Modal transparent visible={showRowsModal} animationType="fade" onRequestClose={() => setShowRowsModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { backgroundColor: themeColors.card, borderColor: themeColors.border }]}>
+            {[10, 20, 50].map((n) => (
+              <TouchableOpacity key={n} style={styles.modalOption} onPress={() => { setPageSize(n); setPage(1); setShowRowsModal(false); }}>
+                <Text style={{ color: themeColors.foreground }}>{n}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Type Filter Modal */}
+      <Modal transparent visible={showTypeModal} animationType="fade" onRequestClose={() => setShowTypeModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { backgroundColor: themeColors.card, borderColor: themeColors.border }]}>
+            {(['ALL', 'INCOME', 'EXPENSE'] as FilterType[]).map((value) => (
+              <TouchableOpacity key={value} style={styles.modalOption} onPress={() => { setTypeFilter(value); setShowTypeModal(false); }}>
+                <Text style={{ color: themeColors.foreground }}>{value}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Frequency Filter Modal */}
+      <Modal transparent visible={showFreqModal} animationType="fade" onRequestClose={() => setShowFreqModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { backgroundColor: themeColors.card, borderColor: themeColors.border }]}>
+            {(['ALL', 'RECURRING', 'NON_RECURRING'] as RecurringFilter[]).map((value) => (
+              <TouchableOpacity key={value} style={styles.modalOption} onPress={() => { setRecurringFilter(value); setShowFreqModal(false); }}>
+                <Text style={{ color: themeColors.foreground }}>{value.replace('_', ' ')}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Transaction Form Bottom Sheet */}
+      <TransactionFormSheet
+        isVisible={showFormSheet}
+        onClose={handleCloseForm}
+        transactionId={editingTransactionId}
+        isEdit={!!editingTransactionId}
+        initialMode={initialMode}
+      />
+    </SafeAreaView>
+  );
+}
+
+const createStyles = (theme: typeof colors.light) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: theme.background,
+    },
+    darkHeaderSection: {
+      backgroundColor: '#1a1e2a',
+      paddingBottom: spacing.lg,
+    },
+    navbar: {
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.md,
+      paddingBottom: spacing.md,
+    },
+    navbarTitle: {
+      fontSize: fontSize['2xl'],
+      fontWeight: fontWeight.bold,
+      color: '#ffffff',
+    },
+    navbarSubtitle: {
+      fontSize: fontSize.sm,
+      color: '#ffffff',
+      opacity: 0.8,
+      marginTop: spacing.xs,
+    },
+    headerActions: {
+      flexDirection: 'row',
+      gap: spacing.md,
+      marginTop: spacing.md,
+    },
+    importButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.xs,
+      backgroundColor: 'rgba(255, 255, 255, 0.1)',
+      paddingHorizontal: spacing.md,
+      height: 40,
+      borderRadius: borderRadius.md,
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.2)',
+    },
+    importButtonText: {
+      color: '#ffffff',
+      fontSize: fontSize.sm,
+      fontWeight: fontWeight.medium,
+    },
+    addButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.xs,
+      paddingHorizontal: spacing.md,
+      height: 40,
+      borderRadius: borderRadius.md,
+    },
+    addButtonText: {
+      color: '#ffffff',
+      fontSize: fontSize.sm,
+      fontWeight: fontWeight.semibold,
+    },
+    searchContainer: {
+      paddingHorizontal: spacing.lg,
+      paddingBottom: spacing.sm,
+    },
+    searchBox: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      borderWidth: 1,
+      borderRadius: borderRadius.md,
+      paddingHorizontal: spacing.md,
+      height: 44,
+    },
+    searchInput: {
+      flex: 1,
+      fontSize: fontSize.md,
+    },
+    filterBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      paddingHorizontal: spacing.lg,
+      paddingBottom: spacing.sm,
+    },
+    filterButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      borderRadius: borderRadius.md,
+      borderWidth: 1,
+    },
+    filterButtonText: {
+      fontSize: fontSize.sm,
+      fontWeight: fontWeight.medium,
+    },
+    resetButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+      paddingHorizontal: spacing.sm,
+    },
+    resetButtonText: {
+      fontSize: fontSize.sm,
+    },
+    filtersPanel: {
+      marginHorizontal: spacing.lg,
+      marginBottom: spacing.sm,
+      borderRadius: borderRadius.md,
+      borderWidth: 1,
+      overflow: 'hidden',
+    },
+    filterOption: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.md,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+    },
+    filterLabel: {
+      fontSize: fontSize.sm,
+    },
+    filterValue: {
+      fontSize: fontSize.sm,
+      fontWeight: fontWeight.medium,
+    },
+    bulkActionsBar: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.sm,
+      marginBottom: spacing.sm,
+    },
+    bulkActionsText: {
+      fontSize: fontSize.sm,
+      fontWeight: fontWeight.semibold,
+    },
+    bulkDeleteButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.xs,
+      borderRadius: borderRadius.md,
+    },
+    bulkDeleteText: {
+      fontSize: fontSize.sm,
+      fontWeight: fontWeight.semibold,
+    },
+    listContent: {
+      paddingHorizontal: spacing.lg,
+      paddingBottom: spacing.lg,
+    },
+    transactionCard: {
+      borderRadius: borderRadius.lg,
+      padding: spacing.md,
+      marginBottom: spacing.sm,
+      position: 'relative',
+    },
+    selectedBadge: {
+      position: 'absolute',
+      top: spacing.xs,
+      right: spacing.xs,
+      width: 20,
+      height: 20,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 10,
+    },
+    selectedBadgeText: {
+      fontSize: 12,
+      fontWeight: fontWeight.bold,
+    },
+    cardContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    cardLeft: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: spacing.sm,
+    },
+    iconCircle: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    infoColumn: {
+      flex: 1,
+      gap: spacing.xs,
+    },
+    cardTitle: {
+      fontSize: fontSize.md,
+      fontWeight: fontWeight.semibold,
+    },
+    metaRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+    },
+    metaText: {
+      fontSize: fontSize.xs,
+    },
+    cardRight: {
+      alignItems: 'flex-end',
+      gap: spacing.xs,
+    },
+    cardAmount: {
+      fontSize: fontSize.lg,
+      fontWeight: fontWeight.bold,
+    },
+    moreButton: {
+      padding: spacing.xs,
+    },
+    emptyState: {
+      paddingTop: spacing.xxxl,
+      alignItems: 'center',
+      gap: spacing.md,
+    },
+    emptyText: {
+      fontSize: fontSize.md,
+      fontWeight: fontWeight.medium,
+    },
+    footerBar: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.md,
+      borderTopWidth: 1,
+    },
+    footerLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
+    footerText: {
+      fontSize: fontSize.sm,
+    },
+    footerButton: {
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
+      borderWidth: 1,
+      borderRadius: borderRadius.sm,
+    },
+    footerButtonText: {
+      fontSize: fontSize.sm,
+      fontWeight: fontWeight.medium,
+    },
+    paginationContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+    },
+    paginationButton: {
+      padding: spacing.xs,
+      minWidth: 32,
+      alignItems: 'center',
+    },
+    paginationButtonDisabled: {
+      opacity: 0.3,
+    },
+    paginationText: {
+      fontSize: fontSize.sm,
+      fontWeight: fontWeight.medium,
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: spacing.lg,
+    },
+    modalCard: {
+      width: '100%',
+      maxWidth: 320,
+      borderRadius: borderRadius.lg,
+      borderWidth: 1,
+      overflow: 'hidden',
+    },
+    modalOption: {
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.md,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: 'rgba(0,0,0,0.1)',
+    },
+  });

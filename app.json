@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "VoiceyBill",
+    "slug": "voiceybill-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.voiceybill.app",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "We use your microphone to record short voice notes for transactions.",
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true
+        }
+      }
+    },
+    "android": {
+      "package": "com.voiceybill.app",
+      "permissions": ["RECORD_AUDIO"],
+      "usesCleartextTraffic": true
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "The app needs access to your photos to scan receipts."
+        }
+      ],
+      [
+        "expo-av",
+        {}
+      ]
+    ]
+  }
+}

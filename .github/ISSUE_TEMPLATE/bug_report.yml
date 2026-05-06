@@ -1,0 +1,87 @@
+name: Bug report
+description: Report a reproducible bug with diagnostics
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Complete this form so maintainers can triage quickly.
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: How much does this affect users?
+      options:
+        - S1 - Critical (data loss, security risk, app unusable)
+        - S2 - High (major functionality broken)
+        - S3 - Medium (workaround exists)
+        - S4 - Low (minor issue)
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Bug summary
+      description: What happened and why is it a bug?
+      placeholder: A clear and concise summary of the problem.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Provide deterministic reproduction steps.
+      placeholder: |
+        1. Open app ...
+        2. Go to ...
+        3. Tap ...
+        4. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      placeholder: What actually happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment details
+      description: Include OS, device, app version, Node version, and Expo SDK.
+      placeholder: Android 14 (Pixel 7), app v1.0.0, Node 20, Expo SDK 54
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs, stack traces, and screenshots
+      description: Paste complete errors and include screenshots if available.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues and did not find a duplicate.
+          required: true
+        - label: I included enough details to reproduce this issue.
+          required: true
+        - label: I removed secrets, tokens, and private data from logs.
+          required: true

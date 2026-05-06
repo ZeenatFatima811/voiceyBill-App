@@ -1,0 +1,130 @@
+name: Version & Release Management
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version bump type (patch, minor, major)'
+        required: true
+        default: 'patch'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  bump-version:
+    name: Bump version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Configure Git
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+
+      - name: Update version
+        id: version
+        run: |
+          CURRENT_VERSION=$(grep '"version":' package.json | head -1 | sed 's/.*"version": "\([^"]*\)".*/\1/')
+          echo "Current version: $CURRENT_VERSION"
+          
+          MAJOR=$(echo $CURRENT_VERSION | cut -d. -f1)
+          MINOR=$(echo $CURRENT_VERSION | cut -d. -f2)
+          PATCH=$(echo $CURRENT_VERSION | cut -d. -f3)
+          
+          case "${{ github.event.inputs.bump }}" in
+            major)
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+              PATCH=0
+              ;;
+            minor)
+              MINOR=$((MINOR + 1))
+              PATCH=0
+              ;;
+            patch)
+              PATCH=$((PATCH + 1))
+              ;;
+          esac
+          
+          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          
+          echo "New version: $NEW_VERSION"
+
+      - name: Update package.json
+        run: |
+          npm version ${{ steps.version.outputs.new_version }} --no-git-tag-v
+
+      - name: Update app.json
+        run: |
+          node -e "
+            const fs = require('fs');
+            const config = JSON.parse(fs.readFileSync('app.json', 'utf8'));
+            config.expo.version = '${{ steps.version.outputs.new_version }}';
+            fs.writeFileSync('app.json', JSON.stringify(config, null, 2) + '\n');
+          "
+
+      - name: Commit changes
+        run: |
+          git add package.json app.json
+          git commit -m "chore(release): bump version to ${{ steps.version.outputs.new_version }}"
+          git tag -a "v${{ steps.version.outputs.new_version }}" -m "Release version ${{ steps.version.outputs.new_version }}"
+
+      - name: Push changes
+        run: |
+          git push origin main --follow-tags || git push origin master --follow-tags || true
+
+      - name: Create Release PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.pulls.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `chore(release): bump to v${{ steps.version.outputs.new_version }}`,
+              head: 'release/v${{ steps.version.outputs.new_version }}',
+              base: 'main',
+              body: `## Release v${{ steps.version.outputs.new_version }}
+
+This PR bumps the version to **${{ steps.version.outputs.new_version }}**.
+
+**Files changed:**
+- \`package.json\`
+- \`app.json\`
+
+Please review and merge to complete the release.`
+            });
+
+  validate-release:
+    name: Validate release configuration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check release files
+        run: |
+          echo "Checking release configuration..."
+          
+          if [ ! -f "CHANGELOG.md" ]; then
+            echo "ℹ️ Consider creating a CHANGELOG.md for release notes"
+          fi
+          
+          if [ ! -f "SECURITY.md" ]; then
+            echo "⚠️ Consider adding SECURITY.md for security policy"
+          fi
+          
+          if [ ! -f "CODE_OF_CONDUCT.md" ]; then
+            echo "⚠️ Consider adding CODE_OF_CONDUCT.md"
+          fi

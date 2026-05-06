@@ -1,0 +1,63 @@
+name: PR Auto Labeler
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  label:
+    name: Apply path labels
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ensure labels exist
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const labels = [
+              { name: 'mobile', color: '1d76db', description: 'Changes to mobile app source code' },
+              { name: 'android', color: 'FF6F00', description: 'Android-specific changes' },
+              { name: 'ios', color: '000000', description: 'iOS-specific changes' },
+              { name: 'ui', color: '9013FE', description: 'User interface changes' },
+              { name: 'feature', color: '0e8a16', description: 'New feature implementation' },
+              { name: 'bug', color: 'd73a49', description: 'Bug fix' },
+              { name: 'performance', color: '84b6eb', description: 'Performance improvements' },
+              { name: 'accessibility', color: 'fef2e7', description: 'Accessibility improvements' },
+              { name: 'dependencies', color: 'fbca04', description: 'Dependency updates' },
+              { name: 'docs', color: '0052cc', description: 'Documentation-only changes' },
+              { name: 'ci/cd', color: '5319e7', description: 'Changes to CI/CD workflows and automation' },
+              { name: 'config', color: '72366d', description: 'Configuration and environment changes' },
+              { name: 'audio', color: 'a2eeef', description: 'Audio/voice processing features' },
+              { name: 'api-integration', color: 'FF1744', description: 'API integration changes' },
+              { name: 'state-management', color: '6A1B9A', description: 'Redux/state management changes' },
+              { name: 'navigation', color: '00838F', description: 'Navigation changes' },
+              { name: 'testing', color: 'F57F17', description: 'Test-related changes' }
+            ];
+
+            for (const label of labels) {
+              try {
+                await github.rest.issues.getLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: label.name
+                });
+              } catch (error) {
+                if (error.status === 404) {
+                  await github.rest.issues.createLabel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    ...label
+                  });
+                } else {
+                  throw error;
+                }
+              }
+            }
+
+      - name: Label pull request
+        uses: actions/labeler@v5
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,131 @@
+name: Contributor Onboarding
+
+on:
+  pull_request:
+    types: [opened]
+  issues:
+    types: [opened]
+
+permissions:
+  pull-requests: write
+  issues: write
+
+jobs:
+  welcome-contributor:
+    name: Welcome new contributor
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check if first time contributor
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const isFirstTimePR = context.payload.pull_request ? true : false;
+            const isFirstTimeIssue = context.payload.issue ? true : false;
+            
+            if (isFirstTimePR) {
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: `👋 **Welcome to voiceyBill Mobile!**
+
+Thank you for opening this pull request! We're excited to have your contribution.
+
+**Before we proceed, please ensure:**
+
+✅ Your PR title follows Conventional Commits format (e.g., \`feat(mobile): Add feature\`)
+✅ You've linked related issues using \`fixes #123\` or \`closes #456\`
+✅ Your code follows the project's style guide
+✅ You've tested your changes locally
+✅ You've updated documentation if needed
+
+**Helpful links:**
+- [Contributing Guide](../../CONTRIBUTING.md)
+- [Code of Conduct](../../CODE_OF_CONDUCT.md)
+- [Developer Setup](../../README.md#development)
+
+If this is your first contribution to this project, consider reading our contribution guidelines. We appreciate your help! 🚀`
+              });
+            }
+
+            if (isFirstTimeIssue) {
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: `👋 **Thanks for reporting an issue!**
+
+To help us understand and fix this problem, please provide:
+
+1. **Environment**: Device, OS version, app version
+2. **Steps to reproduce**: Clear steps to trigger the issue
+3. **Expected vs actual behavior**: What should happen vs what actually happens
+4. **Logs/Screenshots**: Include relevant logs, error messages, or screenshots
+
+**Labeling your issue:**
+Please ensure your issue is labeled with the appropriate severity:
+- \`severity-critical\`: Production outage or data loss
+- \`severity-high\`: Major functionality broken
+- \`severity-medium\`: Notable issue affecting users
+- \`severity-low\`: Minor issue or improvement
+
+Thanks for helping improve voiceyBill! 💙`
+              });
+            }
+
+  setup-checklist:
+    name: Development environment checklist
+    if: github.event.action == 'opened' && github.event.pull_request
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post development setup info
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## 📋 Development Environment Checklist
+
+Before running your changes, make sure you have:
+
+- [ ] Node.js 20+ installed
+- [ ] npm installed
+- [ ] Run \`npm install\` to install dependencies
+- [ ] Android SDK (for Android testing)
+- [ ] Xcode (for iOS testing)
+- [ ] Expo CLI installed (\`npm install -g expo-cli\`)
+
+## 🧪 Testing your changes
+
+Run the following to verify your changes:
+
+\`\`\`bash
+# Install dependencies
+npm install
+
+# Check types
+npx tsc --noEmit
+
+# Run linting (if configured)
+npm run lint --if-present
+
+# Run tests (if available)
+npm test --if-present
+
+# Start development server
+npm start
+
+# Test on Android
+npm run android
+
+# Test on iOS
+npm run ios
+\`\`\`
+
+For more details, see our [Development Guide](../../README.md#development).`
+            });

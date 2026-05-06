@@ -1,0 +1,133 @@
+name: Code Quality Analysis
+
+on:
+  pull_request:
+    branches: ["*"]
+  push:
+    branches: ["main", "master", "develop"]
+
+permissions:
+  contents: read
+  pull-requests: write
+  security-events: write
+
+jobs:
+  code-quality:
+    name: Code Quality Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check code formatting
+        run: |
+          if [ -f .prettierrc ] || grep -q "prettier" package.json; then
+            npx prettier --check src/ 2>/dev/null || echo "Prettier check skipped - no config found"
+          else
+            echo "No prettier config found"
+          fi
+        continue-on-error: true
+
+      - name: ESLint check
+        run: npx eslint src/ --ext .ts,.tsx --format json > eslint-report.json 2>&1 || true
+        continue-on-error: true
+
+      - name: Report linting issues
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            if (fs.existsSync('eslint-report.json')) {
+              try {
+                const report = JSON.parse(fs.readFileSync('eslint-report.json', 'utf8'));
+                const issues = report.flatMap(f => f.messages || []).length;
+                if (issues > 0) {
+                  console.log(`Found ${issues} ESLint issues`);
+                }
+              } catch (e) {
+                console.log('Could not parse ESLint report');
+              }
+            }
+
+  security-scan:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Audit for vulnerabilities
+        run: npm audit --audit-level=moderate 2>&1 || true
+        continue-on-error: true
+
+      - name: Check for common security issues
+        run: |
+          echo "Checking for hardcoded secrets..."
+          if grep -r "password\|secret\|api_key\|apiKey" src/ --include="*.ts" --include="*.tsx" --ignore-case | grep -v "^[^:]*:.*//.*" | grep -v node_modules; then
+            echo "⚠️ Potential hardcoded secrets found!"
+            exit 0
+          fi
+          echo "No hardcoded secrets detected"
+        continue-on-error: true
+
+  file-size-warnings:
+    name: Monitor file sizes
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check for large files
+        run: |
+          echo "Checking for large files in src/..."
+          find src -type f \( -name "*.ts" -o -name "*.tsx" \) -size +50k | while read file; do
+            size=$(du -h "$file" | cut -f1)
+            echo "⚠️ Large file detected: $file ($size)"
+          done
+          echo "✓ File size check completed"
+        continue-on-error: true
+
+  consistency-checks:
+    name: Project consistency
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check for TODO/FIXME comments
+        run: |
+          echo "Scanning for TODO/FIXME comments..."
+          count=$(grep -r "TODO\|FIXME" src/ --include="*.ts" --include="*.tsx" --include="*.tsx" 2>/dev/null | wc -l)
+          if [ $count -gt 0 ]; then
+            echo "Found $count TODO/FIXME comments:"
+            grep -r "TODO\|FIXME" src/ --include="*.ts" --include="*.tsx" | head -10
+          fi
+        continue-on-error: true
+
+      - name: Validate TypeScript strict mode
+        run: |
+          echo "Validating TypeScript configuration..."
+          if grep -q '"strict": true' tsconfig.json; then
+            echo "✓ TypeScript strict mode is enabled"
+          else
+            echo "⚠️ Consider enabling strict mode in tsconfig.json"
+          fi

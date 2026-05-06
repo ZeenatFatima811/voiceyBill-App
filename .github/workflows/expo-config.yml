@@ -1,0 +1,142 @@
+name: Expo & Native Config Check
+
+on:
+  pull_request:
+    paths:
+      - 'app.json'
+      - 'package.json'
+      - 'babel.config.js'
+      - 'tsconfig.json'
+      - '.github/workflows/expo-config.yml'
+  push:
+    branches: ["main", "master"]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  validate-app-config:
+    name: Validate app.json
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Parse app.json
+        run: |
+          echo "Validating app.json structure..."
+          node -e "
+            const fs = require('fs');
+            const config = JSON.parse(fs.readFileSync('app.json', 'utf8'));
+            console.log('App name:', config.expo?.name);
+            console.log('Slug:', config.expo?.slug);
+            console.log('Version:', config.expo?.version);
+            console.log('SDK version:', config.expo?.sdkVersion);
+            console.log('Platforms:', config.expo?.platforms);
+          "
+
+      - name: Check for required Expo fields
+        run: |
+          node -e "
+            const fs = require('fs');
+            const config = JSON.parse(fs.readFileSync('app.json', 'utf8'));
+            const required = ['name', 'slug', 'version', 'sdkVersion'];
+            const missing = required.filter(field => !config.expo?.[field]);
+            if (missing.length > 0) {
+              console.log('⚠️ Missing required fields:', missing.join(', '));
+              process.exit(1);
+            }
+            console.log('✓ All required fields present');
+          "
+
+  validate-expo-plugins:
+    name: Validate Expo plugins
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check Expo plugins
+        run: |
+          echo "Checking Expo plugins configuration..."
+          node -e "
+            const fs = require('fs');
+            const config = JSON.parse(fs.readFileSync('app.json', 'utf8'));
+            const plugins = config.expo?.plugins || [];
+            console.log('Found', plugins.length, 'plugins');
+            plugins.forEach((p, i) => {
+              const name = typeof p === 'string' ? p : p[0];
+              console.log((i+1) + '.', name);
+            });
+          "
+        continue-on-error: true
+
+  validate-package-json:
+    name: Validate package.json
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check package.json
+        run: |
+          echo "Validating package.json..."
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            console.log('Package:', pkg.name);
+            console.log('Version:', pkg.version);
+            console.log('React version:', pkg.dependencies?.react);
+            console.log('React Native version:', pkg.dependencies?.['react-native']);
+            console.log('Expo version:', pkg.dependencies?.expo);
+          "
+
+  check-babel-config:
+    name: Validate Babel configuration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Validate babel config
+        run: |
+          echo "Checking Babel configuration..."
+          if [ -f babel.config.js ]; then
+            node -c babel.config.js && echo "✓ Babel config syntax valid"
+          else
+            echo "⚠️ No babel.config.js found"
+          fi
+        continue-on-error: true
+
+  environment-variables:
+    name: Check environment setup
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check for .env templates
+        run: |
+          echo "Checking environment setup..."
+          if [ -f .env.example ]; then
+            echo "✓ Found .env.example template"
+          else
+            echo "⚠️ Consider adding .env.example for contributors"
+          fi
+          
+          if [ -f .env.local ]; then
+            echo "⚠️ .env.local should not be committed"
+            exit 1
+          fi
+        continue-on-error: true

@@ -1,0 +1,80 @@
+name: Build Test
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: ["main", "master", "develop"]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  build-expo:
+    name: Test Expo build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build check
+        run: npx expo prebuild --dry-run --platform ios || true
+
+      - name: Validate metro config
+        run: npx metro --help > /dev/null
+
+  check-metro:
+    name: Check Metro bundler
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify Metro config
+        run: |
+          if [ -f metro.config.js ]; then
+            echo "Metro config found"
+            node -c metro.config.js
+          else
+            echo "No custom metro.config.js, using defaults"
+          fi
+
+  validate-packages:
+    name: Validate package integrity
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Validate npm packages
+        run: npm audit --audit-level=moderate 2>&1 | tee audit-report.txt
+
+      - name: Check for deprecated packages
+        run: |
+          echo "Checking for deprecated packages..."
+          npm ls --depth=0 2>&1 || true

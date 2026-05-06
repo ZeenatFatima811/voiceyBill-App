@@ -1,0 +1,33 @@
+name: Mark stale issues and pull requests
+
+on:
+  schedule:
+    - cron: "0 0 * * 0"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mark stale issues and pull requests
+        uses: actions/stale@v9
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          stale-issue-message: "This issue is stale because it has been open for 60 days with no activity. It will be closed in 14 days if no further activity occurs."
+          stale-pr-message: "This PR is stale because it has been open for 30 days with no activity. It will be closed in 7 days if no further activity occurs."
+          close-issue-message: "Closing this stale issue. Please reopen if you feel this should be addressed."
+          close-pr-message: "Closing this stale PR. Please reopen if you feel this should be merged."
+          stale-issue-label: "stale"
+          stale-pr-label: "stale"
+          close-issue-label: "wontfix"
+          close-pr-label: "wontfix"
+          exempt-issue-labels: "pinned,security,help-wanted"
+          exempt-pr-labels: "pinned,security,do-not-close"
+          days-before-issue-stale: 60
+          days-before-pr-stale: 30
+          days-before-issue-close: 14
+          days-before-pr-close: 7

@@ -1,0 +1,73 @@
+# Automatic labeling rules for PRs based on changed files
+
+mobile:
+  - src/**
+  - app.json
+  - babel.config.js
+
+android:
+  - src/**
+  - 'app.json'
+  - '*.android.ts'
+  - '*.android.tsx'
+
+ios:
+  - src/**
+  - 'app.json'
+  - '*.ios.ts'
+  - '*.ios.tsx'
+
+ui:
+  - src/components/**
+  - src/screens/**
+  - src/theme/**
+
+feature:
+  - src/features/**
+
+'state-management':
+  - src/store/**
+  - src/context/**
+
+navigation:
+  - src/navigation/**
+
+audio:
+  - src/features/voice/**
+  - src/lib/audioTranscode.ts
+  - src/lib/transcode.ts
+
+'api-integration':
+  - src/store/api-client.ts
+  - src/features/*/services/**
+
+accessibility:
+  - src/components/**
+  - src/screens/**
+
+dependencies:
+  - package.json
+  - package-lock.json
+
+config:
+  - app.json
+  - tsconfig.json
+  - babel.config.js
+  - metro.config.js
+
+ci/cd:
+  - .github/workflows/**
+  - .github/**
+
+docs:
+  - '*.md'
+  - docs/**
+  - 'README.md'
+  - 'CONTRIBUTING.md'
+
+testing:
+  - '**/*.test.ts'
+  - '**/*.test.tsx'
+  - '**/*.spec.ts'
+  - '**/*.spec.tsx'
+  - 'jest.config.js'

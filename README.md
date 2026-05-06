@@ -137,6 +137,3 @@ Detailed contribution rules are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 For vulnerabilities, do not open a public issue. Use GitHub Security Advisories as described in [SECURITY.md](SECURITY.md).
 
-## License
-
-No license file has been added yet. If you plan to accept broad open-source contributions, add a license (MIT/Apache-2.0 are common choices).

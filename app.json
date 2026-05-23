@@ -2,7 +2,7 @@
   "expo": {
     "name": "VoiceyBill",
     "slug": "voiceybill-mobile",
-    "owner": "voiceybill",
+    "owner": "voiceybil",
     "version": "1.0.0",
     "sdkVersion": "54.0.0",
     "orientation": "portrait",
@@ -11,7 +11,7 @@
       "policy": "sdkVersion"
     },
     "updates": {
-      "url": "https://u.expo.dev/e779c721-0d69-4e42-ad10-7ba02417d751",
+      "url": "https://u.expo.dev/afb6b43f-3475-42e5-96aa-3d633746f1cf",
       "fallbackToCacheTimeout": 0,
       "checkAutomatically": "ON_LOAD"
     },
@@ -56,7 +56,7 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "e779c721-0d69-4e42-ad10-7ba02417d751"
+        "projectId": "afb6b43f-3475-42e5-96aa-3d633746f1cf"
       }
     }
   }

@@ -25,8 +25,10 @@ export default function AccountScreen() {
   const dispatch = useAppDispatch();
   const user = useTypedSelector((state) => state.auth.user);
 
-  const originalName = user?.name || '';
-  const originalProfilePicture = user?.profilePicture || null;
+  const [originalName, setOriginalName] = useState(user?.name || '');
+  const [originalProfilePicture, setOriginalProfilePicture] = useState<string | null>(
+    user?.profilePicture || null
+  );
 
   const [name, setName] = useState(originalName);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(originalProfilePicture);
@@ -104,8 +106,13 @@ export default function AccountScreen() {
           })
         );
 
-        setName(updated.name || name);
-        setAvatarPreview(profileUrl || avatarPreview);
+        const newName = updated.name || name;
+        const newProfilePicture = profileUrl || avatarPreview;
+
+        setOriginalName(newName);
+        setOriginalProfilePicture(newProfilePicture);
+        setName(newName);
+        setAvatarPreview(newProfilePicture);
         setPicked(null);
       }
 

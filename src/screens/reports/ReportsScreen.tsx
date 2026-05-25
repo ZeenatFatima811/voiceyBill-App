@@ -59,8 +59,13 @@ export default function ReportsScreen() {
       dispatch(updateCredentials({ reportSetting: { isEnabled: scheduleEnabled } }));
       setShowScheduleModal(false);
       Alert.alert('Saved', 'Report schedule updated successfully');
-    } catch {
-      Alert.alert('Error', 'Failed to update report schedule');
+    } catch (error) {
+      console.warn('[ReportSettings] save failed:', error);
+      const message =
+        (error as { data?: { message?: string }; error?: string; status?: number | string })?.data?.message ||
+        (error as { error?: string })?.error ||
+        `Failed to update report schedule (status ${(error as { status?: number | string })?.status ?? 'unknown'})`;
+      Alert.alert('Error', message);
     } finally {
       setIsSavingSchedule(false);
     }
@@ -117,16 +122,16 @@ export default function ReportsScreen() {
         {/* Header */}
         <View style={styles.navbar}>
           <View style={styles.navbarTop}>
-            <View>
-              <Text style={styles.navbarTitle}>Report History</Text>
-              <Text style={styles.navbarSubtitle}>View and manage your financial reports</Text>
+            <View style={styles.navbarTextWrap}>
+              <Text style={styles.navbarTitle} numberOfLines={1}>Report History</Text>
+              <Text style={styles.navbarSubtitle} numberOfLines={2}>View and manage your financial reports</Text>
             </View>
             <TouchableOpacity
               style={styles.scheduleButton}
               onPress={() => setShowScheduleModal(true)}
             >
               <Calendar size={16} color={themeColors.navbarForeground} />
-              <Text style={styles.scheduleButtonText}>Report Settings</Text>
+              <Text style={styles.scheduleButtonText} numberOfLines={1}>Report Settings</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -292,7 +297,7 @@ export default function ReportsScreen() {
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.modalContent}>
+            <ScrollView contentContainerStyle={styles.modalContent}>
               {/* Enable toggle */}
               <View style={[styles.settingRow, { borderColor: themeColors.border }]}>
                 <View style={styles.settingRowLeft}>
@@ -374,8 +379,10 @@ const createStyles = (theme: typeof colors.light) =>
     navbarTop: {
       flexDirection: 'row',
       justifyContent: 'space-between',
-      alignItems: 'flex-start',
+      alignItems: 'center',
+      gap: spacing.md,
     },
+    navbarTextWrap: { flex: 1, minWidth: 0 },
     navbarTitle: { fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: theme.navbarForeground },
     navbarSubtitle: { fontSize: fontSize.sm, color: theme.navbarForeground, opacity: 0.8, marginTop: spacing.xs },
     scheduleButton: {
@@ -388,6 +395,7 @@ const createStyles = (theme: typeof colors.light) =>
       borderWidth: 1,
       borderColor: 'rgba(255,255,255,0.25)',
       backgroundColor: 'rgba(255,255,255,0.1)',
+      flexShrink: 0,
     },
     scheduleButtonText: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: theme.navbarForeground },
     content: { padding: spacing.lg },

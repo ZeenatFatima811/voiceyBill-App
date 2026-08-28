@@ -42,7 +42,7 @@ export default function RecentTransactions() {
     data?.transactions ??
     data?.transcations ??
     data?.data?.transactions ??
-    data?.data?.transcations ??
+    data?.data?.transations ??
     [];
 
   const formatPaymentMethod = (method: string) =>
